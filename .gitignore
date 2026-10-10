@@ -1,0 +1,15 @@
+# Environment & binary
+.env
+caupocket-api
+caupocket-api.exe
+/bin/
+*.exe
+
+# Go
+*.test
+*.out
+/vendor/
+
+# IDE
+.idea/
+.vscode/

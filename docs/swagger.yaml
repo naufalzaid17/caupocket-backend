@@ -1,0 +1,663 @@
+basePath: /api/v1
+definitions:
+  handler.createCategoryRequest:
+    properties:
+      icon_name:
+        example: coffee
+        type: string
+      name:
+        example: Kopi
+        maxLength: 100
+        minLength: 1
+        type: string
+      type:
+        enum:
+        - INCOME
+        - EXPENSE
+        example: EXPENSE
+        type: string
+    required:
+    - name
+    - type
+    type: object
+  handler.createGoalRequest:
+    properties:
+      target_amount:
+        example: 5000000
+        type: integer
+      target_date:
+        example: "2026-12-20"
+        type: string
+      title:
+        example: Liburan ke Bali
+        maxLength: 255
+        minLength: 1
+        type: string
+    required:
+    - target_amount
+    - title
+    type: object
+  handler.createTransactionRequest:
+    properties:
+      amount:
+        example: 25000
+        type: integer
+      category_id:
+        example: 0f2b1a3c-1111-4a2b-8c3d-000000000002
+        type: string
+      description:
+        example: Makan siang di warung
+        maxLength: 500
+        type: string
+      trx_date:
+        example: "2026-10-01T09:00:00Z"
+        type: string
+      type:
+        enum:
+        - INCOME
+        - EXPENSE
+        example: EXPENSE
+        type: string
+      wallet_id:
+        example: 0f2b1a3c-1111-4a2b-8c3d-000000000001
+        type: string
+    required:
+    - amount
+    - type
+    - wallet_id
+    type: object
+  handler.fundGoalData:
+    properties:
+      goal:
+        $ref: '#/definitions/model.SavingGoal'
+      transaction:
+        $ref: '#/definitions/handler.transactionResponse'
+    type: object
+  handler.fundGoalRequest:
+    properties:
+      amount:
+        example: 500000
+        type: integer
+      wallet_id:
+        example: 0f2b1a3c-1111-4a2b-8c3d-000000000001
+        type: string
+    required:
+    - amount
+    - wallet_id
+    type: object
+  handler.loginData:
+    properties:
+      token:
+        type: string
+      user:
+        $ref: '#/definitions/handler.userResponse'
+    type: object
+  handler.loginRequest:
+    properties:
+      email:
+        example: naufal@example.com
+        type: string
+      password:
+        example: rahasia123
+        type: string
+    required:
+    - email
+    - password
+    type: object
+  handler.registerRequest:
+    properties:
+      email:
+        example: naufal@example.com
+        type: string
+      name:
+        example: Naufal Aditya
+        maxLength: 255
+        minLength: 1
+        type: string
+      password:
+        example: rahasia123
+        maxLength: 72
+        minLength: 8
+        type: string
+    required:
+    - email
+    - name
+    - password
+    type: object
+  handler.transactionResponse:
+    properties:
+      amount:
+        type: integer
+      category_id:
+        type: string
+      category_name:
+        type: string
+      description:
+        type: string
+      goal_id:
+        type: string
+      goal_title:
+        type: string
+      id:
+        type: string
+      trx_date:
+        type: string
+      type:
+        type: string
+      wallet_id:
+        type: string
+      wallet_name:
+        type: string
+    type: object
+  handler.userResponse:
+    properties:
+      created_at:
+        type: string
+      email:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+    type: object
+  model.Category:
+    properties:
+      created_at:
+        type: string
+      icon_name:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+      type:
+        $ref: '#/definitions/model.CategoryType'
+      updated_at:
+        type: string
+      user_id:
+        type: string
+    type: object
+  model.CategoryType:
+    enum:
+    - INCOME
+    - EXPENSE
+    type: string
+    x-enum-varnames:
+    - CategoryIncome
+    - CategoryExpense
+  model.GoalStatus:
+    enum:
+    - ACTIVE
+    - ACHIEVED
+    type: string
+    x-enum-varnames:
+    - GoalActive
+    - GoalAchieved
+  model.SavingGoal:
+    properties:
+      created_at:
+        type: string
+      current_amount:
+        type: integer
+      id:
+        type: string
+      status:
+        $ref: '#/definitions/model.GoalStatus'
+      target_amount:
+        type: integer
+      target_date:
+        type: string
+      title:
+        type: string
+      updated_at:
+        type: string
+      user_id:
+        type: string
+    type: object
+  model.Wallet:
+    properties:
+      balance:
+        type: integer
+      created_at:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+      updated_at:
+        type: string
+      user_id:
+        type: string
+    type: object
+  response.ErrorBody:
+    properties:
+      error_code:
+        example: INTERNAL_ERROR
+        type: string
+      message:
+        example: Terjadi kesalahan
+        type: string
+      success:
+        example: false
+        type: boolean
+    type: object
+  response.SuccessBody:
+    properties:
+      data: {}
+      message:
+        example: Operasi berhasil
+        type: string
+      success:
+        example: true
+        type: boolean
+    type: object
+host: localhost:8080
+info:
+  contact: {}
+  description: |-
+    RESTful API untuk Caupocket — personal finance & goal-based saving planner.
+    Seluruh mutasi dana (cash-out dan goal funding) dijamin integritas ACID melalui database transaction.
+  title: Caupocket API
+  version: "1.0"
+paths:
+  /auth/login:
+    post:
+      consumes:
+      - application/json
+      description: Memvalidasi kredensial (bcrypt) lalu mengembalikan JWT yang memuat
+        user_id.
+      parameters:
+      - description: Kredensial login
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.loginRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.SuccessBody'
+            - properties:
+                data:
+                  $ref: '#/definitions/handler.loginData'
+              type: object
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorBody'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.ErrorBody'
+      summary: Login
+      tags:
+      - Auth
+  /auth/register:
+    post:
+      consumes:
+      - application/json
+      description: Membuat user beserta dompet utama ("Dompet Utama") dan kategori
+        default dalam satu transaksi.
+      parameters:
+      - description: Data pendaftaran
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.registerRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.SuccessBody'
+            - properties:
+                data:
+                  $ref: '#/definitions/handler.userResponse'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorBody'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.ErrorBody'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.ErrorBody'
+      summary: Daftar akun baru
+      tags:
+      - Auth
+  /categories:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.SuccessBody'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/definitions/model.Category'
+                  type: array
+              type: object
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorBody'
+      security:
+      - BearerAuth: []
+      summary: Daftar kategori milik user
+      tags:
+      - Categories
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Data kategori
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.createCategoryRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.SuccessBody'
+            - properties:
+                data:
+                  $ref: '#/definitions/model.Category'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorBody'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorBody'
+      security:
+      - BearerAuth: []
+      summary: Buat kategori baru
+      tags:
+      - Categories
+  /goals:
+    get:
+      description: Goal berstatus ACTIVE tampil lebih dulu, lalu ACHIEVED.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.SuccessBody'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/definitions/model.SavingGoal'
+                  type: array
+              type: object
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorBody'
+      security:
+      - BearerAuth: []
+      summary: Daftar seluruh target tabungan
+      tags:
+      - Goals
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Data target tabungan
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.createGoalRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.SuccessBody'
+            - properties:
+                data:
+                  $ref: '#/definitions/model.SavingGoal'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorBody'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorBody'
+      security:
+      - BearerAuth: []
+      summary: Buat target tabungan baru
+      tags:
+      - Goals
+  /goals/{id}/fund:
+    post:
+      consumes:
+      - application/json
+      description: |-
+        |
+        Memindahkan dana dari dompet ke saving_goals dalam SATU database transaction:
+        1. Validasi saldo dompet (kunci baris SELECT ... FOR UPDATE).
+        2. Kurangi balance dompet.
+        3. Tambah current_amount goal (status otomatis ACHIEVED bila target tercapai).
+        4. Catat transaksi tipe GOAL_FUNDING.
+        Jika salah satu langkah gagal, seluruh mutasi di-rollback.
+      parameters:
+      - description: Goal ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Payload setor tabungan
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.fundGoalRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.SuccessBody'
+            - properties:
+                data:
+                  $ref: '#/definitions/handler.fundGoalData'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorBody'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorBody'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorBody'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.ErrorBody'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorBody'
+      security:
+      - BearerAuth: []
+      summary: Setor dana ke target tabungan (goal funding)
+      tags:
+      - Goals
+  /me:
+    get:
+      description: Mengembalikan data user pemilik token. Berguna untuk memvalidasi
+        cookie/token dari frontend.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.SuccessBody'
+            - properties:
+                data:
+                  $ref: '#/definitions/handler.userResponse'
+              type: object
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorBody'
+      security:
+      - BearerAuth: []
+      summary: Profil user saat ini
+      tags:
+      - Auth
+  /transactions:
+    get:
+      parameters:
+      - default: 10
+        description: Jumlah maksimal data (default 10, max 100)
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.SuccessBody'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/definitions/handler.transactionResponse'
+                  type: array
+              type: object
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorBody'
+      security:
+      - BearerAuth: []
+      summary: Daftar transaksi terakhir
+      tags:
+      - Transactions
+    post:
+      consumes:
+      - application/json
+      description: |-
+        |
+        Mencatat transaksi sekaligus memutasi saldo dompet dalam SATU database transaction:
+        * INCOME: saldo dompet bertambah.
+        * EXPENSE (cash-out): saldo divalidasi terlebih dahulu; bila kurang, request ditolak (422) dan tidak ada perubahan.
+        Tipe GOAL_FUNDING tidak diizinkan di sini — gunakan endpoint /goals/{id}/fund.
+      parameters:
+      - description: Payload transaksi
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.createTransactionRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.SuccessBody'
+            - properties:
+                data:
+                  $ref: '#/definitions/handler.transactionResponse'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorBody'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorBody'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorBody'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorBody'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.ErrorBody'
+      security:
+      - BearerAuth: []
+      summary: Catat transaksi (income / cash-out)
+      tags:
+      - Transactions
+  /wallets:
+    get:
+      description: Frontend menjumlahkan balance seluruh dompet untuk menampilkan
+        total saldo.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.SuccessBody'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/definitions/model.Wallet'
+                  type: array
+              type: object
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorBody'
+      security:
+      - BearerAuth: []
+      summary: Daftar dompet beserta saldo
+      tags:
+      - Wallets
+securityDefinitions:
+  BearerAuth:
+    description: 'Masukkan nilai: "Bearer <token JWT hasil login>"'
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"
