@@ -34,6 +34,12 @@ func mapServiceError(err error) (int, string) {
 		return http.StatusBadRequest, response.ErrCodeCategoryMismatch
 	case errors.Is(err, service.ErrInvalidAmount), errors.Is(err, service.ErrInvalidInput):
 		return http.StatusBadRequest, response.ErrCodeValidation
+	case errors.Is(err, service.ErrOcrUnavailable):
+		return http.StatusServiceUnavailable, response.ErrCodeOcrUnavailable
+	case errors.Is(err, service.ErrOcrNoText):
+		return http.StatusUnprocessableEntity, response.ErrCodeOcrNoText
+	case errors.Is(err, service.ErrOcrFailed):
+		return http.StatusInternalServerError, response.ErrCodeOcrFailed
 	default:
 		return http.StatusInternalServerError, response.ErrCodeInternal
 	}

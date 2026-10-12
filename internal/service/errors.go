@@ -15,4 +15,9 @@ var (
 	ErrCategoryNotFound    = errors.New("kategori tidak ditemukan")
 	ErrCategoryMismatch    = errors.New("tipe kategori tidak sesuai dengan tipe transaksi")
 	ErrInsufficientBalance = errors.New("saldo dompet tidak cukup")
+
+	// OCR (EPIC V2.1).
+	ErrOcrUnavailable = errors.New("modul OCR (tesseract) tidak tersedia di server")
+	ErrOcrFailed      = errors.New("gagal memproses gambar struk")
+	ErrOcrNoText      = errors.New("tidak ada teks yang terbaca dari struk")
 )

@@ -99,11 +99,14 @@ func TestLedgerEndToEnd(t *testing.T) {
 	}()
 
 	cfg := &config.Config{
-		Port:         "0",
-		DatabaseURL:  "postgres://caupocket:caupocket@localhost:5433/caupocket?sslmode=disable&client_encoding=UTF8",
-		JWTSecret:    "e2e-test-secret-0123456789abcdef",
-		JWTExpiresIn: time.Hour,
-		GinMode:      "test",
+		Port:            "0",
+		DatabaseURL:     "postgres://caupocket:caupocket@localhost:5433/caupocket?sslmode=disable&client_encoding=UTF8",
+		JWTSecret:       "e2e-test-secret-0123456789abcdef",
+		JWTExpiresIn:    time.Hour,
+		GinMode:         "test",
+		EventBus:        "memory",
+		HabitStreakDays: 3,
+		HabitReward:     10_000,
 	}
 	router, cleanup, err := app.Build(cfg)
 	if err != nil {
@@ -374,5 +377,163 @@ func TestLedgerEndToEnd(t *testing.T) {
 		t.Fatalf("kategori default tidak ter-seed: %d", len(categories))
 	}
 
+	habitEngineScenario(t, ts)
+
 	t.Log("SEMUA SKENARIO LEDGER LOLOS ✔")
+}
+
+// habitEngineScenario (EPIC V2.2): publish → worker → aturan streak →
+// auto FundGoal + habit_logs, termasuk guard idempotensi & toggle off.
+func habitEngineScenario(t *testing.T, ts *httptest.Server) {
+	registerAndLogin := func() string {
+		email := fmt.Sprintf("habit-%d@example.com", time.Now().UnixNano())
+		if code, env := doRequest(t, ts, "POST", "/api/v1/auth/register", "", map[string]any{
+			"name": "Habit Tester", "email": email, "password": "rahasia123",
+		}); code != 201 {
+			t.Fatalf("register habit user = %d (%s)", code, env.Message)
+		}
+		code, env := doRequest(t, ts, "POST", "/api/v1/auth/login", "", map[string]any{
+			"email": email, "password": "rahasia123",
+		})
+		if code != 200 {
+			t.Fatalf("login habit user = %d", code)
+		}
+		var login struct {
+			Token string `json:"token"`
+		}
+		decodeData(t, env, &login)
+		return login.Token
+	}
+
+	fiveDaysAgo := time.Now().AddDate(0, 0, -5).Format(time.RFC3339)
+
+	setupStreak := func(token string) (walletID, goalID string) {
+		// Goal aktif sebagai tujuan reward.
+		code, env := doRequest(t, ts, "POST", "/api/v1/goals", token, map[string]any{
+			"title": "Liburan Reward", "target_amount": 1_000_000,
+		})
+		if code != 201 {
+			t.Fatalf("buat goal habit = %d (%s)", code, env.Message)
+		}
+		var goal struct {
+			ID string `json:"id"`
+		}
+		decodeData(t, env, &goal)
+
+		_, env = doRequest(t, ts, "GET", "/api/v1/wallets", token, nil)
+		var wallets []struct {
+			ID string `json:"id"`
+		}
+		decodeData(t, env, &wallets)
+
+		// Top up dulu (saldo awal 0), lalu pengeluaran 5 hari lalu
+		// (streak hari ini = 5) menyisakan saldo untuk reward.
+		if code, _ := doRequest(t, ts, "POST", "/api/v1/transactions", token, map[string]any{
+			"wallet_id": wallets[0].ID, "type": "INCOME", "amount": 50_000,
+			"description": "Top up", "trx_date": fiveDaysAgo,
+		}); code != 201 {
+			t.Fatalf("income lama = %d", code)
+		}
+		if code, _ := doRequest(t, ts, "POST", "/api/v1/transactions", token, map[string]any{
+			"wallet_id": wallets[0].ID, "type": "EXPENSE", "amount": 10_000,
+			"description": "Jajan lama", "trx_date": fiveDaysAgo,
+		}); code != 201 {
+			t.Fatalf("expense lama = %d", code)
+		}
+		return wallets[0].ID, goal.ID
+	}
+
+	type habitLogEntry struct {
+		StreakDays   int    `json:"streak_days"`
+		RewardAmount int64  `json:"reward_amount"`
+		GoalTitle    string `json:"goal_title"`
+	}
+
+	waitForReward := func(t *testing.T, token string, want int) []habitLogEntry {
+		t.Helper()
+		deadline := time.Now().Add(5 * time.Second)
+		for time.Now().Before(deadline) {
+			_, env := doRequest(t, ts, "GET", "/api/v1/habits/logs", token, nil)
+			var logs []habitLogEntry
+			decodeData(t, env, &logs)
+			if len(logs) >= want {
+				return logs
+			}
+			time.Sleep(300 * time.Millisecond)
+		}
+		t.Fatalf("jumlah habit_logs tidak mencapai %d dalam batas waktu", want)
+		return nil
+	}
+
+	getBalance := func(t *testing.T, token, walletID string) int64 {
+		_, env := doRequest(t, ts, "GET", "/api/v1/wallets", token, nil)
+		var wallets []struct {
+			ID      string `json:"id"`
+			Balance int64  `json:"balance"`
+		}
+		decodeData(t, env, &wallets)
+		for _, w := range wallets {
+			if w.ID == walletID {
+				return w.Balance
+			}
+		}
+		t.Fatal("dompet hilang")
+		return 0
+	}
+
+	// -- Skenario A: fitur aktif → event transaksi memicu reward --------------
+	// (reward bisa terpicu di event pengeluaran backdated maupun transaksi
+	// pemicu hari ini — keduanya valid; yang penting tepat satu reward.)
+	tokenA := registerAndLogin()
+	if code, _ := doRequest(t, ts, "PUT", "/api/v1/habits/settings", tokenA, map[string]any{"enabled": true}); code != 200 {
+		t.Fatal("aktifkan habit gagal")
+	}
+	walletA, _ := setupStreak(tokenA)
+
+	if code, _ := doRequest(t, ts, "POST", "/api/v1/transactions", tokenA, map[string]any{
+		"wallet_id": walletA, "type": "INCOME", "amount": 20_000, "description": "Pemicu event",
+	}); code != 201 {
+		t.Fatal("transaksi pemicu gagal")
+	}
+
+	logsA := waitForReward(t, tokenA, 1)
+	if logsA[0].StreakDays < 3 || logsA[0].RewardAmount != 10_000 || logsA[0].GoalTitle != "Liburan Reward" {
+		t.Fatalf("isi habit_log tidak sesuai: %+v", logsA[0])
+	}
+	// 50k income - 10k expense - 10k reward + 20k pemicu = 50k.
+	if b := getBalance(t, tokenA, walletA); b != 50_000 {
+		t.Fatalf("saldo setelah reward = %d, ingin 50000", b)
+	}
+
+	// -- Guard: streak yang sama tidak direward dua kali ----------------------
+	if code, _ := doRequest(t, ts, "POST", "/api/v1/transactions", tokenA, map[string]any{
+		"wallet_id": walletA, "type": "INCOME", "amount": 5_000, "description": "Pemicu kedua",
+	}); code != 201 {
+		t.Fatal("transaksi pemicu kedua gagal")
+	}
+	time.Sleep(1 * time.Second) // beri kesempatan worker bila salah memberi reward kedua
+	_, envLogs := doRequest(t, ts, "GET", "/api/v1/habits/logs", tokenA, nil)
+	var logsA2 []habitLogEntry
+	decodeData(t, envLogs, &logsA2)
+	if len(logsA2) != len(logsA) {
+		t.Fatalf("streak yang sama direward %d kali (seharusnya 1): %+v", len(logsA2), logsA2)
+	}
+
+	// -- Skenario B: fitur mati → tidak ada reward ---------------------------
+	tokenB := registerAndLogin()
+	walletB, _ := setupStreak(tokenB) // setting default: disabled
+	if code, _ := doRequest(t, ts, "POST", "/api/v1/transactions", tokenB, map[string]any{
+		"wallet_id": walletB, "type": "INCOME", "amount": 20_000, "description": "Pemicu user B",
+	}); code != 201 {
+		t.Fatal("transaksi user B gagal")
+	}
+	time.Sleep(1 * time.Second) // beri kesempatan worker salah memproses
+	_, env := doRequest(t, ts, "GET", "/api/v1/habits/logs", tokenB, nil)
+	var logsB []map[string]any
+	decodeData(t, env, &logsB)
+	if len(logsB) != 0 {
+		t.Fatalf("user dengan fitur mati tetap mendapat reward: %+v", logsB)
+	}
+
+	t.Log("SKENARIO HABIT ENGINE (EPIC V2.2) LOLOS ✔")
 }

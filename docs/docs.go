@@ -436,6 +436,158 @@ const docTemplate = `{
                 }
             }
         },
+        "/habits/logs": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Habits"
+                ],
+                "summary": "Riwayat reward habit engine",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "default": 20,
+                        "description": "Jumlah maksimal data (default 20, max 100)",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.SuccessBody"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/definitions/model.HabitLog"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorBody"
+                        }
+                    }
+                }
+            }
+        },
+        "/habits/settings": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Mengembalikan status toggle auto-nabung user beserta parameter aturan (streak \u0026 reward).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Habits"
+                ],
+                "summary": "Status fitur auto-nabung (habit engine)",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.SuccessBody"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/handler.habitSettingsResponse"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorBody"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Toggle fitur reward streak (mis. 3 hari tanpa jajan → Rp10.000 otomatis masuk target tabungan aktif tertua).",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Habits"
+                ],
+                "summary": "Aktifkan/matikan auto-nabung",
+                "parameters": [
+                    {
+                        "description": "Status toggle",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.updateHabitSettingsRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.SuccessBody"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/handler.habitSettingsResponse"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorBody"
+                        }
+                    }
+                }
+            }
+        },
         "/me": {
             "get": {
                 "security": [
@@ -472,6 +624,91 @@ const docTemplate = `{
                     },
                     "401": {
                         "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorBody"
+                        }
+                    }
+                }
+            }
+        },
+        "/ocr/receipt": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "|\nMenerima gambar struk (multipart/form-data, field \"file\") lalu:\n1. Menjalankan OCR Tesseract (subprocess, PSM 4).\n2. Mengekstrak nama merchant (baris teratas yang wajar) dan\ntotal nominal (baris TOTAL/jumlah/bayar dengan \"Rp\", abaikan\ntitik/koma pemisah) via regex.\n3. Mengembalikan DTO untuk auto-fill form transaksi di frontend.",
+                "consumes": [
+                    "multipart/form-data"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "OCR"
+                ],
+                "summary": "Pindai struk belanja (OCR)",
+                "parameters": [
+                    {
+                        "type": "file",
+                        "description": "Gambar struk (.jpg/.jpeg/.png/.webp, max 5MB)",
+                        "name": "file",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.SuccessBody"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/service.OcrReceipt"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorBody"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorBody"
+                        }
+                    },
+                    "413": {
+                        "description": "Request Entity Too Large",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorBody"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorBody"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorBody"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorBody"
                         }
@@ -777,6 +1014,20 @@ const docTemplate = `{
                 }
             }
         },
+        "handler.habitSettingsResponse": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "type": "boolean"
+                },
+                "reward_amount": {
+                    "type": "integer"
+                },
+                "streak_days": {
+                    "type": "integer"
+                }
+            }
+        },
         "handler.loginData": {
             "type": "object",
             "properties": {
@@ -869,6 +1120,14 @@ const docTemplate = `{
                 }
             }
         },
+        "handler.updateHabitSettingsRequest": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "type": "boolean"
+                }
+            }
+        },
         "handler.userResponse": {
             "type": "object",
             "properties": {
@@ -933,6 +1192,41 @@ const docTemplate = `{
                 "GoalActive",
                 "GoalAchieved"
             ]
+        },
+        "model.HabitLog": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "goal_id": {
+                    "type": "string"
+                },
+                "goal_title": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "reward_amount": {
+                    "type": "integer"
+                },
+                "reward_date": {
+                    "type": "string"
+                },
+                "streak_days": {
+                    "type": "integer"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "user_id": {
+                    "type": "string"
+                }
+            }
         },
         "model.SavingGoal": {
             "type": "object",
@@ -1017,6 +1311,26 @@ const docTemplate = `{
                 "success": {
                     "type": "boolean",
                     "example": true
+                }
+            }
+        },
+        "service.OcrReceipt": {
+            "type": "object",
+            "properties": {
+                "date": {
+                    "type": "string",
+                    "example": "2026-10-12"
+                },
+                "merchant_name": {
+                    "type": "string",
+                    "example": "Warung Makan Bahagia"
+                },
+                "raw_text": {
+                    "type": "string"
+                },
+                "total_amount": {
+                    "type": "integer",
+                    "example": 52725
                 }
             }
         }

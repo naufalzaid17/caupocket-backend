@@ -4,6 +4,9 @@ package response
 import "github.com/gin-gonic/gin"
 
 // Kode error yang dikonsumsi frontend untuk penanganan error yang spesifik.
+//
+// #nosec G101 -- nama konstanta mengandung pola "Credentials" namun isinya
+// kode error API publik, bukan kredensial.
 const (
 	ErrCodeValidation          = "VALIDATION_ERROR"
 	ErrCodeUnauthorized        = "UNAUTHORIZED"
@@ -17,6 +20,17 @@ const (
 	ErrCodeCategoryMismatch    = "CATEGORY_TYPE_MISMATCH"
 	ErrCodeNotFound            = "NOT_FOUND"
 	ErrCodeInternal            = "INTERNAL_ERROR"
+
+	// OCR (EPIC V2.1).
+	ErrCodeOcrFileRequired = "OCR_FILE_REQUIRED"
+	ErrCodeOcrInvalidType  = "OCR_INVALID_TYPE"
+	ErrCodeOcrTooLarge     = "OCR_FILE_TOO_LARGE"
+	ErrCodeOcrUnavailable  = "OCR_UNAVAILABLE"
+	ErrCodeOcrFailed       = "OCR_FAILED"
+	ErrCodeOcrNoText       = "OCR_NO_TEXT"
+
+	// Rate limiting.
+	ErrCodeRateLimited = "RATE_LIMITED"
 )
 
 // SuccessBody format envelope sukses (2xx).

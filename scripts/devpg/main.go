@@ -23,6 +23,10 @@ func main() {
 	dataDir := flag.String("data", filepath.Join(os.TempDir(), "caupocket-dev-pg"), "direktori data")
 	flag.Parse()
 
+	if *port < 1 || *port > 65535 {
+		log.Fatalf("port harus 1-65535, dapat %d", *port)
+	}
+
 	pg := embeddedpostgres.NewDatabase(
 		embeddedpostgres.DefaultConfig().
 			Port(uint32(*port)).

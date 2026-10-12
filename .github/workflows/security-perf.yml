@@ -1,0 +1,123 @@
+name: Security & Performance Testing
+
+# Testing gate sebelum rilis: SAST + e2e + DAST + load test.
+on:
+  workflow_dispatch:
+    inputs:
+      client_ref:
+        description: "Branch/tag repo caupocket-client untuk checkout"
+        required: false
+        default: main
+  push:
+    branches: [main, "test/**", "v2**"]
+
+jobs:
+  backend-sast:
+    name: Backend SAST (gosec + govulncheck + unit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Build & vet
+        run: go build ./... && go vet ./...
+      - name: gosec (SAST)
+        run: go run github.com/securego/gosec/v2/cmd/gosec@latest -quiet ./...
+      - name: govulncheck
+        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+      - name: Unit tests
+        run: go test ./pkg/... ./internal/service/...
+
+  backend-e2e-dast-perf:
+    name: Backend E2E + DAST + Load test
+    runs-on: ubuntu-latest
+    needs: backend-sast
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: caupocket
+          POSTGRES_PASSWORD: caupocket
+          POSTGRES_DB: caupocket
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U caupocket"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+    env:
+      DATABASE_URL: postgres://caupocket:caupocket@localhost:5432/caupocket?sslmode=disable
+      JWT_SECRET: ci-test-secret-0123456789abcdef
+      JWT_EXPIRES_IN: 72h
+      PORT: "8080"
+      GIN_MODE: release
+      EVENT_BUS: memory
+      SWAGGER_ENABLED: "true"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: E2E ledger + habit engine
+        run: go test -tags e2e -count=1 -run TestLedgerEndToEnd ./e2e
+
+      - name: Checkout web client (untuk probe XSS/CSRF/cookie)
+        uses: actions/checkout@v4
+        with:
+          repository: naufalzaid17/caupocket-client
+          ref: ${{ inputs.client_ref || 'main' }}
+          path: client
+
+      - name: Build web client
+        working-directory: client
+        run: |
+          npm ci --legacy-peer-deps || npm install --legacy-peer-deps
+          npx astro check
+          npm run build
+
+      - name: Load test — read/write/login (rate-limit login dimatikan agar bcrypt terukur)
+        run: |
+          RATE_LIMIT_LOGIN_PER_MIN=0 RATE_LIMIT_REGISTER_PER_MIN=0 nohup go run ./cmd/api > api.log 2>&1 &
+          for i in $(seq 1 30); do curl -sf http://localhost:8080/healthz > /dev/null && break; sleep 1; done
+          go run ./scripts/loadtest -base http://localhost:8080/api/v1 -scenario read -c 25 -dur 15s
+          go run ./scripts/loadtest -base http://localhost:8080/api/v1 -scenario write -c 10 -dur 10s
+          go run ./scripts/loadtest -base http://localhost:8080/api/v1 -scenario login -c 10 -dur 10s
+          kill %1 2>/dev/null || true
+
+      - name: DAST probes (JWT/SQLi/IDOR/XSS/CSRF/header/rate-limit aktif)
+        run: |
+          nohup node client/dist/server/entry.mjs > web.log 2>&1 &
+          for i in $(seq 1 20); do curl -sf -o /dev/null http://localhost:4321/login && break; sleep 1; done
+          nohup go run ./cmd/api > api2.log 2>&1 &
+          for i in $(seq 1 30); do curl -sf http://localhost:8080/healthz > /dev/null && break; sleep 1; done
+          DAST_JWT_SECRET=ci-test-secret-0123456789abcdef node scripts/dast-probes.mjs
+
+      - name: Upload log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: server-logs
+          path: |
+            api.log
+            api2.log
+            web.log
+          if-no-files-found: ignore
+
+  frontend-build:
+    name: Frontend build & type-check (astro 7)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: naufalzaid17/caupocket-client
+          ref: ${{ inputs.client_ref || 'main' }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci --legacy-peer-deps || npm install --legacy-peer-deps
+      - run: npx astro check
+      - run: npm audit --omit=dev
+      - run: npm run build
