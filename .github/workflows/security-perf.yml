@@ -80,14 +80,13 @@ jobs:
 
       - name: Load test — read/write/login (rate-limit login dimatikan agar bcrypt terukur)
         run: |
-          RATE_LIMIT_LOGIN_PER_MIN=0 RATE_LIMIT_REGISTER_PER_MIN=0 nohup go run ./cmd/api > api.log 2>&1 &
-          for i in $(seq 1 60); do curl -sf --max-time 2 http://localhost:8080/healthz > /dev/null && break; sleep 1; done
-          curl -sf --max-time 2 http://localhost:8080/healthz
-          go run ./scripts/loadtest -base http://localhost:8080/api/v1 -scenario read -c 25 -dur 15s
-          go run ./scripts/loadtest -base http://localhost:8080/api/v1 -scenario write -c 10 -dur 10s
-          go run ./scripts/loadtest -base http://localhost:8080/api/v1 -scenario login -c 10 -dur 10s
-          pkill -f "exe/api" 2>/dev/null || true
-          pkill -f "go run ./cmd/api" 2>/dev/null || true
+          # API khusus load test di port 8081 (isolasi dari API DAST di 8080).
+          PORT=8081 RATE_LIMIT_LOGIN_PER_MIN=0 RATE_LIMIT_REGISTER_PER_MIN=0 nohup go run ./cmd/api > api.log 2>&1 &
+          for i in $(seq 1 60); do curl -sf --max-time 2 http://localhost:8081/healthz > /dev/null && break; sleep 1; done
+          curl -sf --max-time 2 http://localhost:8081/healthz
+          go run ./scripts/loadtest -base http://localhost:8081/api/v1 -scenario read -c 25 -dur 15s
+          go run ./scripts/loadtest -base http://localhost:8081/api/v1 -scenario write -c 10 -dur 10s
+          go run ./scripts/loadtest -base http://localhost:8081/api/v1 -scenario login -c 10 -dur 10s
 
       - name: DAST probes (JWT/SQLi/IDOR/XSS/CSRF/header/rate-limit aktif)
         run: |
