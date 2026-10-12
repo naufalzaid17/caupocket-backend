@@ -10,6 +10,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -155,7 +156,10 @@ func main() {
 	reads := []string{"/me", "/wallets", "/transactions?limit=10", "/goals"}
 	var rs result
 	var wg sync.WaitGroup
-	stop := time.After(*dur)
+	// ctx.Done() bersifat broadcast: SEMUA worker berhenti saat durasi habis
+	// (time.After hanya terkonsumsi satu receiver — penyebab hang di CI).
+	ctx, cancel := context.WithTimeout(context.Background(), *dur)
+	defer cancel()
 
 	for i := 0; i < *conc; i++ {
 		wg.Add(1)
@@ -164,7 +168,7 @@ func main() {
 			n := 0
 			for {
 				select {
-				case <-stop:
+				case <-ctx.Done():
 					return
 				default:
 				}
