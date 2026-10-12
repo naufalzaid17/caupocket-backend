@@ -104,9 +104,11 @@ const idorb = await makeUser('idorb');
   let safe = true;
   for (const p of payloads) {
     const r = await call('/auth/login', { method: 'POST', body: { email: p, password: p } });
-    if (r.status !== 401 || r.text.includes('DROP') || r.status >= 500) safe = false;
+    // 401 (kredensial salah) maupun 400 (email ditolak validator binding)
+    // sama-sama aman; yang tidak boleh: 5xx / error DB / autentikasi lolos.
+    if ((r.status !== 401 && r.status !== 400) || r.text.includes('DROP') || r.text.includes('pq:')) safe = false;
   }
-  report(safe, 'A03a SQLi pada login aman (parameterized)', '3 payload → 401 tanpa error DB');
+  report(safe, 'A03a SQLi pada login aman (parameterized)', '3 payload → 400/401 tanpa error DB');
 
   const r = await call("/goals/' OR '1'='1' --/fund", { method: 'POST', token: main.token, body: { wallet_id: 'x', amount: 1 } });
   report(r.status === 400 || r.status === 404, 'A03b SQLi pada path param goal ditolak', `status ${r.status}`);

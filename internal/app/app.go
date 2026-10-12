@@ -105,7 +105,8 @@ func Build(cfg *config.Config) (*gin.Engine, func(), error) {
 	// Jangan percaya proxy apa pun: ClientIP = RemoteAddr sehingga tidak bisa
 	// dipalsukan lewat X-Forwarded-For (bypass rate limiter).
 	_ = router.SetTrustedProxies(nil)
-	router.Use(gin.Logger(), gin.Recovery(), middleware.CORS(), middleware.SecurityHeaders())
+	// SecurityHeaders sebelum CORS agar preflight OPTIONS pun membawa header.
+	router.Use(gin.Logger(), gin.Recovery(), middleware.SecurityHeaders(), middleware.CORS())
 
 	router.GET("/healthz", func(c *gin.Context) {
 		response.Success(c, http.StatusOK, "Caupocket API berjalan", gin.H{"status": "ok"})
