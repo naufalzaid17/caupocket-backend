@@ -90,7 +90,8 @@ jobs:
 
       - name: DAST probes (JWT/SQLi/IDOR/XSS/CSRF/header/rate-limit aktif)
         run: |
-          nohup node client/dist/server/entry.mjs > web.log 2>&1 &
+          # PORT harus dieksplisit: env job PORT=8080 jangan bocor ke web server.
+          HOST=127.0.0.1 PORT=4321 nohup node client/dist/server/entry.mjs > web.log 2>&1 &
           for i in $(seq 1 20); do curl -sf --max-time 2 -o /dev/null http://localhost:4321/login && break; sleep 1; done
           nohup go run ./cmd/api > api2.log 2>&1 &
           for i in $(seq 1 60); do curl -sf --max-time 2 http://localhost:8080/healthz > /dev/null && break; sleep 1; done
