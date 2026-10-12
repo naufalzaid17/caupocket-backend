@@ -107,6 +107,7 @@ func TestLedgerEndToEnd(t *testing.T) {
 		EventBus:        "memory",
 		HabitStreakDays: 3,
 		HabitReward:     10_000,
+		SwaggerEnabled:  true,
 	}
 	router, cleanup, err := app.Build(cfg)
 	if err != nil {
