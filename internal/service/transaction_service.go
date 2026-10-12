@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 
+	"caupocket-api/internal/events"
 	"caupocket-api/internal/model"
 	"caupocket-api/internal/repository"
 )
@@ -28,6 +29,8 @@ type FundGoalInput struct {
 	GoalID   uuid.UUID
 	WalletID uuid.UUID
 	Amount   int64
+	// Description opsional; kosong = "Setor tabungan: <judul goal>".
+	Description string
 }
 
 // FundGoalResult hasil operasi goal funding: ledger entry + state goal terbaru.
@@ -51,6 +54,9 @@ type transactionService struct {
 	goals        repository.GoalRepository
 	categories   repository.CategoryRepository
 	transactions repository.TransactionRepository
+	// bus dipakai untuk publish event "transaction.created" setelah TX sukses
+	// (EPIC V2.2). Nilai nil menonaktifkan event (mis. pada unit test).
+	bus events.EventBus
 }
 
 func NewTransactionService(
@@ -59,6 +65,7 @@ func NewTransactionService(
 	goals repository.GoalRepository,
 	categories repository.CategoryRepository,
 	transactions repository.TransactionRepository,
+	bus events.EventBus,
 ) TransactionService {
 	return &transactionService{
 		db:           db,
@@ -66,6 +73,7 @@ func NewTransactionService(
 		goals:        goals,
 		categories:   categories,
 		transactions: transactions,
+		bus:          bus,
 	}
 }
 
@@ -142,7 +150,30 @@ func (s *transactionService) CreateTransaction(ctx context.Context, userID uuid.
 	if err != nil {
 		return nil, err
 	}
+
+	// EPIC V2.2: publikasikan event ASYNCHRONOUS setelah TX commit agar
+	// consumer (habit worker) selalu melihat data yang sudah tersimpan.
+	s.publishTransactionCreated(created)
+
 	return created, nil
+}
+
+// publishTransactionCreated mengirim event ke bus dengan best-effort;
+// kegagalan publish tidak pernah menggagalkan transaksi yang sudah commit.
+func (s *transactionService) publishTransactionCreated(trx *model.Transaction) {
+	if s.bus == nil {
+		return
+	}
+	if err := s.bus.Publish(context.Background(), events.TopicTransactionCreated, events.TransactionCreatedEvent{
+		UserID:        trx.UserID,
+		TransactionID: trx.ID,
+		Type:          string(trx.Type),
+		Amount:        trx.Amount,
+		TrxDate:       trx.TrxDate,
+		OccurredAt:    time.Now(),
+	}); err != nil {
+		log.Printf("gagal publish %s: %v", events.TopicTransactionCreated, err)
+	}
 }
 
 // FundGoal memindahkan dana dari dompet ke target tabungan dalam satu TX:

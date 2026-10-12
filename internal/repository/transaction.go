@@ -2,6 +2,8 @@ package repository
 
 import (
 	"context"
+	"database/sql"
+	"time"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -16,6 +18,9 @@ import (
 type TransactionRepository interface {
 	Create(ctx context.Context, tx *gorm.DB, trx *model.Transaction) error
 	ListByUser(ctx context.Context, userID uuid.UUID, limit int) ([]model.Transaction, error)
+	// LastExpenseDate mengembalikan tanggal transaksi EXPENSE terakhir;
+	// nil bila user belum pernah berpengeluaran.
+	LastExpenseDate(ctx context.Context, userID uuid.UUID) (*time.Time, error)
 }
 
 type transactionRepository struct {
@@ -44,4 +49,20 @@ func (r *transactionRepository) ListByUser(ctx context.Context, userID uuid.UUID
 		Limit(limit).
 		Find(&transactions).Error
 	return transactions, err
+}
+
+func (r *transactionRepository) LastExpenseDate(ctx context.Context, userID uuid.UUID) (*time.Time, error) {
+	var last sql.NullTime
+	err := r.db.WithContext(ctx).
+		Model(&model.Transaction{}).
+		Select("MAX(trx_date)").
+		Where("user_id = ? AND type = ?", userID, model.TrxExpense).
+		Scan(&last).Error
+	if err != nil {
+		return nil, err
+	}
+	if !last.Valid {
+		return nil, nil
+	}
+	return &last.Time, nil
 }

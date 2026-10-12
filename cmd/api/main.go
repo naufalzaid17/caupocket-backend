@@ -36,8 +36,12 @@ func main() {
 	defer cleanup()
 
 	server := &http.Server{
-		Addr:    ":" + cfg.Port,
-		Handler: router,
+		Addr:              ":" + cfg.Port,
+		Handler:           router,
+		ReadHeaderTimeout: 10 * time.Second, // mitigasi Slowloris (gosec G112)
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      60 * time.Second,
+		IdleTimeout:       90 * time.Second,
 	}
 
 	go func() {

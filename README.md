@@ -69,6 +69,52 @@ direktori temp dan dijalankan pada port 5433.
 | GET/POST | `/api/v1/transactions` | JWT | Ledger (INCOME/EXPENSE) |
 | GET/POST | `/api/v1/goals` | JWT | Target tabungan |
 | POST | `/api/v1/goals/{id}/fund` | JWT | Setor dana ke goal (GOAL_FUNDING) |
+| POST | `/api/v1/ocr/receipt` | JWT | Pindai struk (OCR Tesseract) → merchant, total, tanggal |
+| GET/PUT | `/api/v1/habits/settings` | JWT | Status & toggle auto-nabung |
+| GET | `/api/v1/habits/logs` | JWT | Riwayat reward habit engine |
+
+## Habit Engine — Event-Driven Auto-Funding (EPIC V2.2)
+
+Alur event-driven untuk reward kebiasaan hemat:
+
+1. `CreateTransaction` sukses → publish event `transaction.created`
+   **setelah TX commit** (async, best-effort; kegagalan publish tidak
+   membatalkan transaksi).
+2. `internal/worker` me-listen event melalui **EventBus**:
+   * `memory` (default) — dispatcher antar-goroutine, sekuensial, tanpa
+     infrastruktur eksternal;
+   * `redis` — Redis Pub/Sub (`EVENT_BUS=redis` + `REDIS_ADDR`) untuk
+     deployment multi-instance.
+3. `HabitService` menjalankan aturan: bila user mengaktifkan auto-nabung dan
+   sudah **N hari tanpa pengeluaran** (default 3, dihitung dari tanggal
+   EXPENSE terakhir / registrasi), sistem otomatis menjalankan `FundGoal`
+   (TX ACID yang sama dengan setoran manual) sebesar reward (default
+   Rp10.000, env `HABIT_STREAK_DAYS`/`HABIT_REWARD_AMOUNT`) ke goal aktif
+   tertua, lalu mencatatnya di tabel `habit_logs`. Satu streak hanya
+   direward satu kali (guard berbasis tanggal).
+
+Tabel baru via AutoMigrate: `habit_settings` (toggle per user),
+`habit_logs` (riwayat reward).
+
+## Receipt OCR (EPIC V2.1)
+
+`POST /api/v1/ocr/receipt` menerima multipart/form-data (`file`, wajib
+`.jpg/.jpeg/.png/.webp` ≤5MB, isi file diverifikasi via magic bytes) dan:
+
+1. Menjalankan binary **Tesseract** sebagai subprocess (`--psm 4`, tanpa cgo):
+   `tesseract <img> stdout -l eng --psm 4`.
+2. Mem-parsing raw text dengan regex: nama merchant (baris teratas yang
+   didominasi huruf), total nominal (baris TOTAL/jumlah/bayar — subtotal
+   dikecualikan; fallback baris ber-Rp; separator titik/koma dinormalisasi),
+   dan tanggal (dinormalisasi ke YYYY-MM-DD).
+3. Mengembalikan DTO `{ merchant_name, total_amount, date, raw_text }`.
+
+Konfigurasi env: `TESSERACT_BIN` (default `tesseract`; di Windows installer
+UB Mannheim biasanya `C:\Program Files\Tesseract-OCR\tesseract.exe`),
+`TESSERACT_LANG` (default `eng`), `OCR_TIMEOUT` (default `30s`).
+
+Uji parser tanpa Tesseract: `go test ./internal/service/...`.
+Buat gambar struk dummy: `powershell -File scripts/make-test-receipt.ps1`.
 
 ## Jaminan Transaksional
 

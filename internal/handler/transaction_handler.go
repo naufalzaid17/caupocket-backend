@@ -24,17 +24,17 @@ type createTransactionRequest struct {
 }
 
 type transactionResponse struct {
-	ID           uuid.UUID    `json:"id"`
-	Type         string       `json:"type"`
-	Amount       int64        `json:"amount"`
-	Description  string       `json:"description"`
-	TrxDate      time.Time    `json:"trx_date"`
-	WalletID     uuid.UUID    `json:"wallet_id"`
-	WalletName   string       `json:"wallet_name"`
-	CategoryID   *uuid.UUID   `json:"category_id"`
-	CategoryName *string      `json:"category_name"`
-	GoalID       *uuid.UUID   `json:"goal_id"`
-	GoalTitle    *string      `json:"goal_title"`
+	ID           uuid.UUID  `json:"id"`
+	Type         string     `json:"type"`
+	Amount       int64      `json:"amount"`
+	Description  string     `json:"description"`
+	TrxDate      time.Time  `json:"trx_date"`
+	WalletID     uuid.UUID  `json:"wallet_id"`
+	WalletName   string     `json:"wallet_name"`
+	CategoryID   *uuid.UUID `json:"category_id"`
+	CategoryName *string    `json:"category_name"`
+	GoalID       *uuid.UUID `json:"goal_id"`
+	GoalTitle    *string    `json:"goal_title"`
 }
 
 func toTransactionResponse(t *model.Transaction) transactionResponse {

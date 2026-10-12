@@ -85,6 +85,15 @@ definitions:
     - amount
     - wallet_id
     type: object
+  handler.habitSettingsResponse:
+    properties:
+      enabled:
+        type: boolean
+      reward_amount:
+        type: integer
+      streak_days:
+        type: integer
+    type: object
   handler.loginData:
     properties:
       token:
@@ -149,6 +158,11 @@ definitions:
       wallet_name:
         type: string
     type: object
+  handler.updateHabitSettingsRequest:
+    properties:
+      enabled:
+        type: boolean
+    type: object
   handler.userResponse:
     properties:
       created_at:
@@ -193,6 +207,29 @@ definitions:
     x-enum-varnames:
     - GoalActive
     - GoalAchieved
+  model.HabitLog:
+    properties:
+      created_at:
+        type: string
+      description:
+        type: string
+      goal_id:
+        type: string
+      goal_title:
+        type: string
+      id:
+        type: string
+      reward_amount:
+        type: integer
+      reward_date:
+        type: string
+      streak_days:
+        type: integer
+      updated_at:
+        type: string
+      user_id:
+        type: string
+    type: object
   model.SavingGoal:
     properties:
       created_at:
@@ -250,6 +287,20 @@ definitions:
       success:
         example: true
         type: boolean
+    type: object
+  service.OcrReceipt:
+    properties:
+      date:
+        example: "2026-10-12"
+        type: string
+      merchant_name:
+        example: Warung Makan Bahagia
+        type: string
+      raw_text:
+        type: string
+      total_amount:
+        example: 52725
+        type: integer
     type: object
 host: localhost:8080
 info:
@@ -518,6 +569,95 @@ paths:
       summary: Setor dana ke target tabungan (goal funding)
       tags:
       - Goals
+  /habits/logs:
+    get:
+      parameters:
+      - default: 20
+        description: Jumlah maksimal data (default 20, max 100)
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.SuccessBody'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/definitions/model.HabitLog'
+                  type: array
+              type: object
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorBody'
+      security:
+      - BearerAuth: []
+      summary: Riwayat reward habit engine
+      tags:
+      - Habits
+  /habits/settings:
+    get:
+      description: Mengembalikan status toggle auto-nabung user beserta parameter
+        aturan (streak & reward).
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.SuccessBody'
+            - properties:
+                data:
+                  $ref: '#/definitions/handler.habitSettingsResponse'
+              type: object
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorBody'
+      security:
+      - BearerAuth: []
+      summary: Status fitur auto-nabung (habit engine)
+      tags:
+      - Habits
+    put:
+      consumes:
+      - application/json
+      description: Toggle fitur reward streak (mis. 3 hari tanpa jajan → Rp10.000
+        otomatis masuk target tabungan aktif tertua).
+      parameters:
+      - description: Status toggle
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.updateHabitSettingsRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.SuccessBody'
+            - properties:
+                data:
+                  $ref: '#/definitions/handler.habitSettingsResponse'
+              type: object
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorBody'
+      security:
+      - BearerAuth: []
+      summary: Aktifkan/matikan auto-nabung
+      tags:
+      - Habits
   /me:
     get:
       description: Mengembalikan data user pemilik token. Berguna untuk memvalidasi
@@ -543,6 +683,65 @@ paths:
       summary: Profil user saat ini
       tags:
       - Auth
+  /ocr/receipt:
+    post:
+      consumes:
+      - multipart/form-data
+      description: |-
+        |
+        Menerima gambar struk (multipart/form-data, field "file") lalu:
+        1. Menjalankan OCR Tesseract (subprocess, PSM 4).
+        2. Mengekstrak nama merchant (baris teratas yang wajar) dan
+        total nominal (baris TOTAL/jumlah/bayar dengan "Rp", abaikan
+        titik/koma pemisah) via regex.
+        3. Mengembalikan DTO untuk auto-fill form transaksi di frontend.
+      parameters:
+      - description: Gambar struk (.jpg/.jpeg/.png/.webp, max 5MB)
+        in: formData
+        name: file
+        required: true
+        type: file
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.SuccessBody'
+            - properties:
+                data:
+                  $ref: '#/definitions/service.OcrReceipt'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorBody'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorBody'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/response.ErrorBody'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorBody'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.ErrorBody'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/response.ErrorBody'
+      security:
+      - BearerAuth: []
+      summary: Pindai struk belanja (OCR)
+      tags:
+      - OCR
   /transactions:
     get:
       parameters:

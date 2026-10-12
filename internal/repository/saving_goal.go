@@ -21,6 +21,8 @@ type GoalRepository interface {
 	ListByUser(ctx context.Context, userID uuid.UUID) ([]model.SavingGoal, error)
 	FindForUpdate(ctx context.Context, tx *gorm.DB, userID, goalID uuid.UUID) (*model.SavingGoal, error)
 	AddProgress(ctx context.Context, tx *gorm.DB, goalID uuid.UUID, amount int64) error
+	// FirstActiveByUser mengembalikan goal ACTIVE tertua (tujuan reward habit).
+	FirstActiveByUser(ctx context.Context, userID uuid.UUID) (*model.SavingGoal, error)
 }
 
 type goalRepository struct {
@@ -64,6 +66,22 @@ func (r *goalRepository) FindForUpdate(ctx context.Context, tx *gorm.DB, userID,
 	err := tx.WithContext(ctx).
 		Clauses(clause.Locking{Strength: "UPDATE"}).
 		Where("id = ? AND user_id = ?", goalID, userID).
+		First(&goal).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &goal, nil
+}
+
+// FirstActiveByUser mengembalikan goal berstatus ACTIVE paling awal dibuat.
+func (r *goalRepository) FirstActiveByUser(ctx context.Context, userID uuid.UUID) (*model.SavingGoal, error) {
+	var goal model.SavingGoal
+	err := r.db.WithContext(ctx).
+		Where("user_id = ? AND status = ?", userID, model.GoalActive).
+		Order("created_at ASC").
 		First(&goal).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, nil
