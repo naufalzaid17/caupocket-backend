@@ -16,5 +16,24 @@ services:
       timeout: 3s
       retries: 10
 
+  # SATU container: Caupocket API + Redis (event bus internal) + Tesseract OCR.
+  # Redis tidak di-expose keluar (bind 127.0.0.1 di dalam container).
+  api:
+    build: .
+    container_name: caupocket-api
+    environment:
+      DATABASE_URL: postgres://caupocket:caupocket@postgres:5432/caupocket?sslmode=disable
+      JWT_SECRET: ${JWT_SECRET:-ganti-dengan-rahasia-minimal-16-karakter}
+      PORT: 8080
+      SWAGGER_ENABLED: ${SWAGGER_ENABLED:-true}
+      # EVENT_BUS & REDIS_ADDR sudah default ke redis lokal dalam container
+      # (image default). Set EVENT_BUS=memory atau REDIS_ADDR eksternal bila
+      # ingin memakai broker lain.
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
 volumes:
   caupocket_pgdata:

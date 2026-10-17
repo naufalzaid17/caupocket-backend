@@ -34,18 +34,33 @@ e2e/                Test end-to-end (embedded PostgreSQL)
 ## Menjalankan
 
 ```bash
-# 1. Siapkan PostgreSQL (opsional: docker-compose bawaan)
-docker compose up -d
+# Cara termudah (PostgreSQL + API&Redis dalam satu container):
+docker compose up --build
 
-# 2. Salin env lalu sesuaikan
+# Atau manual:
+docker compose up -d postgres       # atau: go run ./scripts/devpg
 cp .env.example .env
-
-# 3. Jalankan server (port default 8080)
 go run ./cmd/api
 ```
 
 Skema database dibuat otomatis via `AutoMigrate` saat startup.
 Swagger UI: <http://localhost:8080/swagger/index.html>
+
+### Container "all-in-one" (API + Redis + Tesseract)
+
+Image [`Dockerfile`](Dockerfile) memaketkan binary API, **Redis** (event bus
+internal, `--save ''` in-memory, hanya `127.0.0.1` di dalam container), dan
+**Tesseract OCR** beserta data bahasa `eng`. Entrypoint
+([`docker/entrypoint.sh`](docker/entrypoint.sh)) menyalakan Redis, menunggu
+`PING`, lalu menjalankan API — dan meneruskan `SIGTERM` ke keduanya agar
+graceful shutdown tetap bekerja.
+
+- Default image: `EVENT_BUS=redis`, `REDIS_ADDR=127.0.0.1:6379` — habit engine
+  langsung jalan tanpa service tambahan.
+- Ingin Redis terpisah / klaster? Override env `REDIS_ADDR` ke host Redis
+  eksternal (atau `EVENT_BUS=memory` untuk single-instance tanpa Redis).
+- Catatan arsitektur: dua proses dalam satu container dipilih demi kesederhanaan
+  self-hosting; untuk horizontal scaling, pisahkan Redis kembali.
 
 ## Testing
 
