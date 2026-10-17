@@ -124,3 +124,76 @@ jobs:
       - run: npx astro check
       - run: npm audit --omit=dev
       - run: npm run build
+
+  container-image:
+    name: Container image (API + Redis satu container)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: caupocket
+          POSTGRES_PASSWORD: caupocket
+          POSTGRES_DB: caupocket
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U caupocket"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build image
+        run: docker build -t caupocket-api:ci .
+
+      - name: Tersedia dalam image (redis & tesseract)
+        run: |
+          docker run --rm --entrypoint redis-server caupocket-api:ci --version
+          docker run --rm --entrypoint tesseract caupocket-api:ci --version
+
+      - name: Jalankan container (Redis internal aktif)
+        run: |
+          docker run -d --name api \
+            -p 8080:8080 \
+            -e DATABASE_URL=postgres://caupocket:caupocket@172.17.0.1:5432/caupocket?sslmode=disable \
+            -e JWT_SECRET=ci-container-secret-0123456789 \
+            caupocket-api:ci
+          for i in $(seq 1 60); do curl -sf --max-time 2 http://localhost:8080/healthz > /dev/null && break; sleep 1; done
+          curl -sf --max-time 2 http://localhost:8080/healthz
+
+      - name: Smoke: habit reward mengalir via Redis in-container
+        run: |
+          API=http://localhost:8080/api/v1
+          EMAIL="container-$RANDOM@example.com"
+          FIVEAGO=$(date -u -d '5 days ago' +%Y-%m-%dT%H:%M:%SZ)
+          curl -sf -X POST $API/auth/register -H 'Content-Type: application/json' \
+            -d "{\"name\":\"Container Smoke\",\"email\":\"$EMAIL\",\"password\":\"rahasia123\"}" > /dev/null
+          TOKEN=$(curl -sf -X POST $API/auth/login -H 'Content-Type: application/json' \
+            -d "{\"email\":\"$EMAIL\",\"password\":\"rahasia123\"}" | sed -n 's/.*"token":"\([^"]*\)".*/\1/p')
+          AUTH="Authorization: Bearer $TOKEN"
+          WALLET=$(curl -sf $API/wallets -H "$AUTH" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')
+          curl -sf -X PUT $API/habits/settings -H "$AUTH" -H 'Content-Type: application/json' -d '{"enabled":true}' > /dev/null
+          curl -sf -X POST $API/goals -H "$AUTH" -H 'Content-Type: application/json' \
+            -d '{"title":"Goal Container","target_amount":1000000}' > /dev/null
+          curl -sf -X POST $API/transactions -H "$AUTH" -H 'Content-Type: application/json' \
+            -d "{\"wallet_id\":\"$WALLET\",\"type\":\"INCOME\",\"amount\":50000,\"trx_date\":\"$FIVEAGO\"}" > /dev/null
+          curl -sf -X POST $API/transactions -H "$AUTH" -H 'Content-Type: application/json' \
+            -d "{\"wallet_id\":\"$WALLET\",\"type\":\"EXPENSE\",\"amount\":10000,\"trx_date\":\"$FIVEAGO\"}" > /dev/null
+
+          # Event dipublish -> Redis dalam container -> worker -> reward.
+          LOGS=""
+          for i in $(seq 1 20); do
+            LOGS=$(curl -sf $API/habits/logs -H "$AUTH")
+            echo "$LOGS" | grep -q '"reward_amount":10000' && break
+            sleep 1
+          done
+          echo "$LOGS" | grep -q '"reward_amount":10000' || { echo "reward tidak kunjung muncul: $LOGS"; exit 1; }
+          echo "SMOKE OK — habit reward tercatat melalui Redis in-container:"
+          echo "$LOGS" | head -c 300; echo
+
+      - name: Bukti Redis internal dari log container
+        if: always()
+        run: docker logs api 2>&1 | grep -E "\[entrypoint\] redis siap|\[habit\] reward" | head -5
+
+      - name: Cleanup
+        if: always()
+        run: docker rm -f api || true
